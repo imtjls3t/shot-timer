@@ -9,6 +9,7 @@ import { Calibration } from './components/Calibration';
 import { History } from './components/History';
 import { Settings } from './components/Settings';
 import { Notice } from './components/common';
+import type { StageDebugTrace } from './audio/debugTrace';
 
 interface InstallPrompt extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>; }
 const screens: { id: Screen; label: string; icon: typeof TimerIcon }[] = [
@@ -17,11 +18,12 @@ const screens: { id: Screen; label: string; icon: typeof TimerIcon }[] = [
 ];
 function load() {
   try { return decodeData(localStorage.getItem(STORAGE_KEY)); }
-  catch { return { data: { version: 1, config: { ...DEFAULT_CONFIG }, profiles: [], history: [] } as SavedData, warning: 'Device storage is unavailable. Your changes will only last while Shot Timer stays open.' }; }
+  catch { return { data: { version: 1, debugMode: false, config: { ...DEFAULT_CONFIG }, profiles: [], history: [] } as SavedData, warning: 'Device storage is unavailable. Your changes will only last while Shot Timer stays open.' }; }
 }
 export default function App() {
   const [initial] = useState(load);
   const [data, setData] = useState(initial.data);
+  const [debugTraces, setDebugTraces] = useState<StageDebugTrace[]>([]);
   const [storageWarning, setStorageWarning] = useState(initial.warning);
   const [storageBlocked, setStorageBlocked] = useState(Boolean(initial.warning));
   const [screen, setScreen] = useState<Screen>('timer');
@@ -53,7 +55,8 @@ export default function App() {
   function clearData() {
     try { localStorage.removeItem(STORAGE_KEY); setStorageBlocked(false); setStorageWarning(null); }
     catch { setStorageWarning('Storage could not be cleared. Check your browser’s storage settings.'); return; }
-    setData({ version: 1, config: { ...DEFAULT_CONFIG }, profiles: [], history: [] });
+    setData({ version: 1, debugMode: false, config: { ...DEFAULT_CONFIG }, profiles: [], history: [] });
+    setDebugTraces([]);
     setMessage('All Shot Timer settings, profiles, and stages were deleted from this device. This cannot be undone.');
   }
   return <div className="app-shell">
@@ -64,11 +67,18 @@ export default function App() {
       {storageWarning && <Notice tone="error">{storageWarning}</Notice>}
       {message && <Notice onClose={() => setMessage('')}>{message}</Notice>}
       {!online && <Notice><WifiOff size={15}/> You’re offline. Cached timer features and saved profiles are available.</Notice>}
-      {needRefresh && !busy && <Notice>A new Shot Timer version is available. Updating clears unfinished calibration tests. <button className="text-button" onClick={() => { if (screen !== 'calibration' || window.confirm('Update Shot Timer and discard unfinished calibration tests?')) void updateServiceWorker(true); }}>Update now<ArrowUpRight size={14}/></button></Notice>}
-      {screen === 'timer' && <Timer config={data.config} profiles={data.profiles} onConfig={config => setData(d => ({ ...d, config }))} onRecord={record => setData(d => ({ ...d, history: [record, ...d.history].slice(0, 100) }))} onCalibrate={() => navigate('calibration')} onBusy={markBusy}/>}
+      {needRefresh && !busy && <Notice>A new Shot Timer version is available. Updating clears unfinished calibration tests and temporary debug waveforms. <button className="text-button" onClick={() => { if (screen !== 'calibration' || window.confirm('Update Shot Timer and discard unfinished calibration tests?')) void updateServiceWorker(true); }}>Update now<ArrowUpRight size={14}/></button></Notice>}
+      {screen === 'timer' && <Timer config={data.config} profiles={data.profiles} debugMode={data.debugMode} debugTraces={debugTraces} onConfig={config => setData(d => ({ ...d, config }))} onRecord={record => setData(d => ({ ...d, history: [record, ...d.history].slice(0, 100) }))} onDebugTrace={trace => setDebugTraces(current => [trace, ...current].slice(0, 3))} onUpdateProfile={(id, thresholdDb) => setData(d => ({ ...d, profiles: d.profiles.map(p => p.id === id ? { ...p, settings: { ...p.settings, thresholdDb, resetDb: thresholdDb - 6 } } : p) }))} onCalibrate={() => navigate('calibration')} onBusy={markBusy}/>}
       {screen === 'calibration' && <Calibration profiles={data.profiles} activeId={data.config.activeProfileId} volume={data.config.volume} onBusy={markBusy} onSelect={id => setData(d => ({ ...d, config: { ...d.config, activeProfileId: id } }))} onDelete={id => setData(d => ({ ...d, profiles: d.profiles.filter(p => p.id !== id), config: { ...d.config, activeProfileId: d.config.activeProfileId === id ? d.profiles.find(p => p.id !== id)?.id ?? null : d.config.activeProfileId } }))} onSave={profile => setData(d => ({ ...d, profiles: [...d.profiles, profile], config: { ...d.config, activeProfileId: profile.id } }))} onUpdate={profile => setData(d => ({ ...d, profiles: d.profiles.map(p => p.id === profile.id ? profile : p) }))}/>} 
-      {screen === 'history' && <History history={data.history} onDelete={id => setData(d => ({ ...d, history: d.history.filter(r => r.id !== id) }))} onClear={() => setData(d => ({ ...d, history: [] }))}/>}
-      {screen === 'settings' && <Settings config={data.config} onConfig={config => setData(d => ({ ...d, config }))} onClear={clearData} onInstall={() => void install()} installed={installed}/>}
+      {screen === 'history' && <History
+        history={data.history}
+        debugTraces={debugTraces}
+        profiles={data.profiles}
+        onUpdateProfile={(id, thresholdDb) => setData(d => ({ ...d, profiles: d.profiles.map(p => p.id === id ? { ...p, settings: { ...p.settings, thresholdDb, resetDb: thresholdDb - 6 } } : p) }))}
+        onDelete={id => { setData(d => ({ ...d, history: d.history.filter(r => r.id !== id) })); setDebugTraces(current => current.filter(t => t.stageId !== id)); }}
+        onClear={() => { setData(d => ({ ...d, history: [] })); setDebugTraces([]); }}
+      />}
+      {screen === 'settings' && <Settings config={data.config} debugMode={data.debugMode} onDebugMode={enabled => { setData(d => ({ ...d, debugMode: enabled })); if (!enabled) setDebugTraces([]); }} onConfig={config => setData(d => ({ ...d, config }))} onClear={clearData} onInstall={() => void install()} installed={installed}/>}
     </main>
     <footer className="app-footer"><span>Shot Timer</span><span><i className={`status-dot ${offlineReady || installed ? 'available' : ''}`}/>{offlineReady ? 'Ready to work offline' : 'PRIVATE BY DESIGN'}</span></footer>
     <nav className="mobile-nav" aria-label="Mobile navigation">{screens.map(({ id, label, icon: Icon }) => <button key={id} aria-current={screen === id ? 'page' : undefined} disabled={busy && screen !== id} className={screen === id ? 'active' : ''} onClick={() => navigate(id)}><Icon size={20}/><span>{label}</span></button>)}</nav>

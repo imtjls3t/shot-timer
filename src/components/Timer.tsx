@@ -1,25 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Crosshair, Mic, Play, Settings2, ShieldCheck, Square, Timer as TimerIcon } from 'lucide-react';
 import { AudioEngine, requestWakeLock } from '../audio/engine';
+import { PackedLevelFrames } from '../audio/debugTrace';
+import type { StageDebugTrace } from '../audio/debugTrace';
 import { dbText, newId, sampleDelay, seconds, shotFromDetection } from '../domain';
 import type { CalibrationProfile, Phase, ShotEvent, StageRecord, TimerConfig } from '../domain';
 import { LinkButton, Notice, ShotTable, Summary } from './common';
+import { LiveWaveform } from './LiveWaveform';
+import { StageDebugReview } from './StageDebugReview';
 
 interface Props {
   config: TimerConfig;
   profiles: CalibrationProfile[];
+  debugMode: boolean;
+  debugTraces: StageDebugTrace[];
   onConfig: (config: TimerConfig) => void;
   onRecord: (record: StageRecord) => void;
+  onDebugTrace: (trace: StageDebugTrace) => void;
+  onUpdateProfile: (id: string, thresholdDb: number) => void;
   onCalibrate: () => void;
   onBusy: (busy: boolean) => void;
 }
-export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBusy }: Props) {
+export function Timer({ config, profiles, debugMode, debugTraces, onConfig, onRecord, onDebugTrace, onUpdateProfile, onCalibrate, onBusy }: Props) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [shots, setShots] = useState<ShotEvent[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const [saved, setSaved] = useState(false);
+  const [finishedRecord, setFinishedRecord] = useState<StageRecord | null>(null);
+  const [liveVersion, setLiveVersion] = useState(0);
   const engine = useRef<AudioEngine | null>(null);
   const phaseRef = useRef<Phase>('idle');
   const shotsRef = useRef<ShotEvent[]>([]);
@@ -30,6 +40,8 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
   const mounted = useRef(true);
   const finishing = useRef(false);
   const record = useRef<StageRecord | null>(null);
+  const debugFrames = useRef<PackedLevelFrames | null>(null);
+  const lastLiveUpdate = useRef(0);
   const profile = profiles.find(p => p.id === config.activeProfileId) ?? null;
   const busy = ['preparing', 'standby', 'running'].includes(phase);
   function updatePhase(next: Phase) { phaseRef.current = next; if (mounted.current) setPhase(next); }
@@ -56,7 +68,10 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
   async function start() {
     if (!profile || ['preparing', 'standby', 'running'].includes(phaseRef.current)) return;
     setError(''); setWarning(''); setSaved(false);
-    setShots([]); shotsRef.current = []; setElapsed(0);
+    setShots([]); shotsRef.current = []; setElapsed(0); setFinishedRecord(null); setLiveVersion(0);
+    const captureDebug = debugMode;
+    debugFrames.current = captureDebug ? new PackedLevelFrames() : null;
+    lastLiveUpdate.current = 0;
     startRef.current = Infinity; endRef.current = Infinity; record.current = null; finishing.current = false;
     updatePhase('preparing');
     const audio = new AudioEngine(); engine.current = audio;
@@ -76,7 +91,7 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
       record.current = { id: newId(), startedAt: new Date(Date.now() + delay * 1000).toISOString(), delaySeconds: delay, config: localConfig, profile: localProfile, shots: [], durationMs: 0, interrupted: false };
       const masks = [{ start, end: start + localProfile.cueGuardMs }];
       if (par !== null) masks.push({ start: par, end: par + localProfile.cueGuardMs });
-      audio.configure('timer', localProfile.settings, start, endRef.current, masks);
+      audio.configure('timer', localProfile.settings, start, endRef.current, masks, captureDebug);
       audio.beep(start, localConfig.volume);
       if (par !== null) audio.beep(par, localConfig.volume);
       updatePhase('standby');
@@ -85,7 +100,12 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
       wake.current = await requestWakeLock();
       if (!wake.current) setWarning('Screen wake lock is unavailable. Keep the phone awake and Shot Timer visible while timing.');
       const input = await audio.open({
-        frames: frames => { if (preflight) ambientPeak = Math.max(ambientPeak, ...frames.map(f => f.peakDb)); },
+        frames: frames => {
+          if (preflight) { ambientPeak = Math.max(ambientPeak, ...frames.map(f => f.peakDb)); return; }
+          debugFrames.current?.append(frames.filter(frame => frame.t >= 0 && frame.t <= endRef.current - startRef.current));
+          const now = performance.now();
+          if (mounted.current && now - lastLiveUpdate.current >= 100) { lastLiveUpdate.current = now; setLiveVersion(v => v + 1); }
+        },
         detection: d => {
           if (!d.accepted || preflight || d.t < 0 || d.t > endRef.current - startRef.current) return;
           const shot = shotFromDetection(d, 0, shotsRef.current, localConfig.parSeconds);
@@ -100,6 +120,7 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
       audio.capture(null, 800);
     } catch (e) {
       await audio.close(); await wake.current?.release(); wake.current = null;
+      debugFrames.current = null;
       if (mounted.current) { setError(e instanceof Error ? e.message : 'Could not start audio.'); updatePhase('idle'); }
     }
   }
@@ -114,15 +135,20 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
     await engine.current?.close(); engine.current = null;
     await wake.current?.release(); wake.current = null;
     if (started && record.current) {
-      onRecord({ ...record.current, shots: [...shotsRef.current], durationMs: duration, interrupted: Boolean(reason) });
+      const completed = { ...record.current, shots: [...shotsRef.current], durationMs: duration, interrupted: Boolean(reason) };
+      onRecord(completed);
+      if (debugFrames.current?.length) onDebugTrace({ stageId: completed.id, durationMs: duration, frames: debugFrames.current });
+      setFinishedRecord(completed);
       setElapsed(duration); setSaved(true); updatePhase('finished');
     } else { updatePhase('idle'); setElapsed(0); }
+    debugFrames.current = null;
     if (reason && mounted.current) setError(reason);
     finishing.current = false;
   }
   finishRef.current = finish;
   const afterPar = config.parSeconds !== null && elapsed >= config.parSeconds * 1000;
   const displayTime = phase === 'finished' ? (shots.at(-1)?.elapsedMs ?? elapsed) : elapsed;
+  const finishedTrace = finishedRecord && debugTraces.find(trace => trace.stageId === finishedRecord.id);
 
   return <>
     <h1 className="sr-only">Shot Timer</h1>
@@ -130,14 +156,16 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
     {warning && <Notice onClose={() => setWarning('')}>{warning}</Notice>}
     <div className="timer-layout">
       <div className="timer-main">
-        <section className={`timer-display ${phase === 'running' ? 'is-running' : ''}`} aria-label="Shot timer">
+        <section className={`timer-display ${phase === 'running' ? 'is-running' : ''} ${debugMode ? 'debug-enabled' : ''}`} aria-label="Shot timer">
           <div className="timer-topline"><span className="timer-state"><i className={`status-dot ${busy ? 'pulse' : ''}`}/>{phase === 'preparing' ? 'CHECKING MICROPHONE' : phase === 'standby' ? 'STAND BY' : phase === 'running' ? afterPar ? 'AFTER PAR' : 'LISTENING' : phase === 'finished' ? 'STAGE COMPLETE' : 'READY'}</span><span className="timer-mode">SEMI-AUTO</span></div>
           <div className="timer-digits" aria-live="off">{phase === 'standby' ? <span className="standby-text">Stand by.</span> : <>{seconds(displayTime)}<span>s</span></>}</div>
           <div className="timer-subline">{phase === 'standby' ? 'WAIT FOR START SIGNAL' : phase === 'finished' ? shots.length ? 'LAST SHOT TIME' : 'NO SHOTS RECORDED' : phase === 'preparing' ? 'CHECKING SIGNAL…' : 'ELAPSED TIME'}</div>
           <div className="timer-metrics"><div><span>SHOTS</span><strong>{String(shots.length).padStart(2, '0')}</strong></div><div><span>LAST SPLIT</span><strong>{shots.length > 1 ? seconds(shots.at(-1)!.splitMs) : '—'}<small>s</small></strong></div><div><span>PAR TIME</span><strong>{config.parSeconds === null ? 'OFF' : config.parSeconds.toFixed(2)}{config.parSeconds !== null && <small>s</small>}</strong></div></div>
+          {debugMode && debugFrames.current && (phase === 'standby' || phase === 'running') && <LiveWaveform frames={debugFrames.current} shots={shots} thresholdDb={profile!.settings.thresholdDb} version={liveVersion}/>}
           {busy ? <button className="timer-start stop" onClick={() => void finish()}><Square size={19} fill="currentColor"/>{phase === 'standby' || phase === 'preparing' ? 'CANCEL' : 'STOP'}</button> : <button className="timer-start" onClick={profile ? () => void start() : onCalibrate}><Play size={21} fill="currentColor"/>{profile ? 'START' : 'CALIBRATE'}</button>}
           <div className="timer-foot"><span><Mic size={13}/>{busy ? 'Microphone active' : 'Microphone off'}</span><span>{saved ? 'Saved on this device' : profile ? `${config.minDelay.toFixed(1)}–${config.maxDelay.toFixed(1)}s random delay` : 'Calibration required'}</span></div>
         </section>
+        {finishedRecord && finishedTrace && <StageDebugReview key={finishedRecord.id} record={finishedRecord} trace={finishedTrace} profile={profiles.find(p => p.id === finishedRecord.profile.id) ?? null} onUpdateProfile={onUpdateProfile}/>}
         <section className="card shots-card"><div className="section-heading"><h2>Shot breakdown</h2><span className="pill">{shots.length} SHOTS</span></div><ShotTable shots={shots}/><Summary shots={shots}/></section>
       </div>
       <aside className="timer-sidebar">

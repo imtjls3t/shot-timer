@@ -1,19 +1,21 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { displayBuckets, replay } from '../audio/detector';
+import { PackedLevelFrames } from '../audio/debugTrace';
 import { dbText } from '../domain';
-import type { CalibrationTrace, DetectorSettings } from '../domain';
+import type { DetectorSettings, LevelFrame } from '../domain';
 
 interface Props {
   title: string;
-  trace: CalibrationTrace;
+  trace: { frames: LevelFrame[] | PackedLevelFrames; durationMs: number };
   settings: DetectorSettings;
   recommendedDb: number;
   noiseDb: number;
   onThreshold: (db: number) => void;
+  targetShots?: number | null;
 }
 const H = 238, LEFT = 42, TOP = 20, BOTTOM = 200;
 const y = (db: number) => TOP + (0 - Math.max(-100, Math.min(0, db))) / 100 * (BOTTOM - TOP);
-export function Waveform({ title, trace, settings, recommendedDb, noiseDb, onThreshold }: Props) {
+export function Waveform({ title, trace, settings, recommendedDb, noiseDb, onThreshold, targetShots = 5 }: Props) {
   const id = useId();
   const svg = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(650);
@@ -26,12 +28,15 @@ export function Waveform({ title, trace, settings, recommendedDb, noiseDb, onThr
   }, []);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState(0);
-  const detections = useMemo(() => replay(trace.frames, settings), [trace.frames, settings]);
+  const detections = useMemo(() => trace.frames instanceof PackedLevelFrames ? trace.frames.replay(settings) : replay(trace.frames, settings), [trace.frames, settings]);
   const accepted = detections.filter(d => d.accepted);
+  const acceptedNumbers = new Map(accepted.map((d, i) => [d, i + 1]));
   const span = Math.max(100, trace.durationMs / zoom);
   const start = Math.min(offset, Math.max(0, trace.durationMs - span));
   const end = start + span;
-  const visible = useMemo(() => displayBuckets(trace.frames.filter(f => f.t >= start && f.t <= end), Math.floor(RIGHT - LEFT)), [trace.frames, start, end, RIGHT]);
+  const visible = useMemo(() => trace.frames instanceof PackedLevelFrames
+    ? trace.frames.windowBuckets(start, end, Math.floor(RIGHT - LEFT))
+    : displayBuckets(trace.frames.filter(f => f.t >= start && f.t <= end), Math.floor(RIGHT - LEFT)), [trace.frames, start, end, RIGHT]);
   const x = (t: number) => LEFT + (t - start) / span * (RIGHT - LEFT);
   const path = visible.map((f, i) => `${i ? 'L' : 'M'}${x(f.t).toFixed(1)},${y(f.peakDb).toFixed(1)}`).join(' ');
   const area = visible.length ? `${path}L${x(visible.at(-1)!.t)},${BOTTOM}L${x(visible[0].t)},${BOTTOM}Z` : '';
@@ -42,7 +47,7 @@ export function Waveform({ title, trace, settings, recommendedDb, noiseDb, onThr
     onThreshold(Math.round(Math.max(-90, Math.min(-3, -(yy - TOP) / (BOTTOM - TOP) * 100)) * 10) / 10);
   }
   return <section className="waveform-panel" aria-label={title}>
-    <div className="waveform-heading"><div><span className="eyebrow">SOUND ENVELOPE</span><h3>{title}</h3></div><span className={`pill ${accepted.length === 5 ? 'good' : ''}`}>{accepted.length} / 5 shots</span></div>
+    <div className="waveform-heading"><div><span className="eyebrow">SOUND ENVELOPE</span><h3>{title}</h3></div><span className={`pill ${targetShots !== null && accepted.length === targetShots ? 'good' : ''}`}>{targetShots === null ? `${accepted.length} preview shots` : `${accepted.length} / ${targetShots} shots`}</span></div>
     <svg ref={svg} viewBox={`0 0 ${width} ${H}`} className="waveform-svg" role="img" aria-label={`${title}: ${accepted.length} shots detected at ${dbText(settings.thresholdDb)}`}>
       <defs><clipPath id={id}><rect x={LEFT} y={TOP} width={RIGHT - LEFT} height={BOTTOM - TOP}/></clipPath></defs>
       {[-20, -40, -60, -80, -100].map(db => <g key={db}><line x1={LEFT} x2={RIGHT} y1={y(db)} y2={y(db)} className="chart-grid"/><text x={LEFT - 10} y={y(db) + 4} textAnchor="end" className="chart-label">{db}</text></g>)}
@@ -51,7 +56,7 @@ export function Waveform({ title, trace, settings, recommendedDb, noiseDb, onThr
         <rect x={LEFT} y={y(noiseDb)} width={RIGHT - LEFT} height={BOTTOM - y(noiseDb)} className="noise-region"/>
         {visible.filter(f => f.excluded).map((f, i) => <rect key={i} x={x(f.t)} y={TOP} width={Math.max(2, (RIGHT - LEFT) / visible.length)} height={BOTTOM - TOP} fill="#ddd9c4"/>)}
         <path d={area} className="wave-area"/><path d={path} className="wave-line"/>
-        {detections.filter(d => d.t >= start && d.t <= end).map((d, i) => <g key={i}><line x1={x(d.t)} x2={x(d.t)} y1={y(d.peakDb)} y2={BOTTOM} className={d.accepted ? 'shot-marker' : 'rejected-marker'}/>{d.accepted && <><circle cx={x(d.t)} cy={Math.max(TOP + 10, y(d.peakDb) - 12)} r={9} fill="#274a2b"/><text x={x(d.t)} y={Math.max(TOP + 10, y(d.peakDb) - 12) + 3} textAnchor="middle" className="shot-number">{accepted.indexOf(d) + 1}</text></>}</g>)}
+        {detections.filter(d => d.t >= start && d.t <= end).map((d, i) => <g key={i}><line x1={x(d.t)} x2={x(d.t)} y1={y(d.peakDb)} y2={BOTTOM} className={d.accepted ? 'shot-marker' : 'rejected-marker'}/>{d.accepted && <><circle cx={x(d.t)} cy={Math.max(TOP + 10, y(d.peakDb) - 12)} r={9} fill="#274a2b"/><text x={x(d.t)} y={Math.max(TOP + 10, y(d.peakDb) - 12) + 3} textAnchor="middle" className="shot-number">{acceptedNumbers.get(d)}</text></>}</g>)}
         <line x1={LEFT} x2={RIGHT} y1={y(recommendedDb)} y2={y(recommendedDb)} className="recommended-line"/>
         <line x1={LEFT} x2={RIGHT} y1={y(settings.resetDb)} y2={y(settings.resetDb)} className="reset-line"/>
       </g>

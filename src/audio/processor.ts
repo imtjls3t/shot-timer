@@ -11,6 +11,7 @@ class FieldProcessor extends AudioWorkletProcessor {
   private detector: ShotDetector | null = null;
   private frames: LevelFrame[] = [];
   private mode: 'capture' | 'timer' = 'capture';
+  private debugFrames = false;
   private startMs = Infinity;
   private endMs = Infinity;
   private masks: { start: number; end: number }[] = [];
@@ -20,6 +21,7 @@ class FieldProcessor extends AudioWorkletProcessor {
     this.port.onmessage = ({ data }) => {
       if (data.type === 'configure') {
         this.mode = data.mode;
+        this.debugFrames = Boolean(data.debugFrames);
         this.detector = data.settings ? new ShotDetector(data.settings as DetectorSettings) : null;
         this.startMs = data.startMs;
         this.endMs = data.endMs;
@@ -51,7 +53,7 @@ class FieldProcessor extends AudioWorkletProcessor {
         return;
       }
       frame.excluded = this.masks.some(m => frame.t >= m.start && frame.t < m.end);
-      if (this.mode === 'capture') this.frames.push(frame);
+      if (this.mode === 'capture' || this.debugFrames) this.frames.push(frame);
       if (this.detector) {
         const detection = this.detector.process(frame);
         if (detection) this.port.postMessage({ type: 'detection', detection });

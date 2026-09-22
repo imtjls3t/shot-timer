@@ -38,6 +38,10 @@ npm run test:e2e
 
 Browser tests run against the production build. They inject a synthetic microphone MediaStream in the browser and exercise the actual AudioWorklet, calibration, waveform interaction, PAR timing, persistence, permissions, and offline cache. They do not add a fake detector or test mode to the published app.
 
+### Debug mode
+
+Enable **Debug mode** in Settings to see a rolling live level waveform, threshold, and accepted shots inside the timer. Each new stage then has a full-stage review plot on the Timer screen and in History. Drag the threshold line or use the numeric field and ±1 dB buttons to preview detections; **Update profile** changes the active profile for future stages, not the saved stage or its shot times. The latest three stage plots remain available only in this browser session. Reloading or turning Debug mode off clears them immediately; the setting itself persists.
+
 ## Install and deploy
 
 Each deployment advances the displayed version by one minor step. Run `npm run version:next` before committing a deployment; this updates both package files from `0.1.0` to `0.2.0`, then through `0.9.0` to `0.10.0`, `0.11.0`, and so on. The UI formats these as `v0.1`, `v0.9`, and `v0.10`. Advancing to `v1.0` is deliberately manual.
@@ -66,7 +70,7 @@ Timing is based on the audio context clock, not render ticks. Browser microphone
 
 ## Data and privacy
 
-No MediaRecorder, audio blobs, PCM recording, uploads, or analytics. Raw samples exist only in browser processing buffers. During calibration, the app keeps derived peak/RMS frames in memory to draw plots and replay threshold changes. Saving, restarting, canceling the workflow, or leaving calibration releases those traces; closing a capture stops microphone tracks. There is no playback function.
+No MediaRecorder, audio blobs, PCM recording, uploads, or analytics. Raw samples exist only in browser processing buffers. During calibration, the app keeps derived peak/RMS frames in memory to draw plots and replay threshold changes. Saving, restarting, canceling the workflow, or leaving calibration releases those traces. Debug mode retains only derived peak-level frames for the latest three stages; they are never serialized and disappear on reload or when Debug mode is switched off. Closing a capture stops microphone tracks. There is no playback function.
 
 Only versioned settings, named profiles, and the newest 100 stages are stored in localStorage. Profile and shot serializers explicitly allowlist persisted fields. History snapshots preserve the settings used even if the original profile is deleted. Invalid/unknown storage is not silently overwritten; valid records are recovered in memory and Settings provides an explicit reset. Quota failures are surfaced. Clearing browser data can erase all local results.
 
@@ -80,6 +84,6 @@ Automated tests cannot establish real acoustic accuracy. On the intended Android
 - Test the phone’s speaker at the actual media volume; neither cue should register. Confirm the documented blind interval is acceptable.
 - PAR marks late shots and ends after two seconds; stopping manually saves once, canceling standby saves nothing.
 - Wake lock, denied permission, app switching, screen lock, calls, microphone disconnection, and reopening history behave clearly.
-- Dragging and keyboard threshold controls agree, portrait layout fits, and no waveform data survives save/reload.
+- Dragging and keyboard threshold controls agree, portrait layout fits, calibration plots disappear on save, and debug plots disappear on reload or when Debug mode is turned off.
 
 If echoes cannot be separated from real pairs in a particular setup, move the phone or increase lockout and repeat validation. This app cannot promise perfect detection on every phone or in every acoustic environment.

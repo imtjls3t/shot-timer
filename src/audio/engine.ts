@@ -71,9 +71,9 @@ export class AudioEngine {
   }
 
   get nowMs() { return (this.context?.currentTime ?? 0) * 1000; }
-  configure(mode: 'capture' | 'timer', settings: DetectorSettings | null, startMs: number, endMs: number, masks: { start: number; end: number }[] = []) {
+  configure(mode: 'capture' | 'timer', settings: DetectorSettings | null, startMs: number, endMs: number, masks: { start: number; end: number }[] = [], debugFrames = false) {
     this.origin = startMs;
-    this.node?.port.postMessage({ type: 'configure', mode, settings, startMs, endMs, masks });
+    this.node?.port.postMessage({ type: 'configure', mode, settings, startMs, endMs, masks, debugFrames });
   }
   capture(settings: DetectorSettings | null, durationMs: number, cue?: { volume: number; guardMs: number }) {
     const start = this.nowMs + 50;

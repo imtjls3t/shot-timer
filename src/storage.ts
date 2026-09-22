@@ -2,7 +2,7 @@ import { DEFAULT_CONFIG } from './domain';
 import type { CalibrationProfile, DetectorSettings, SavedData, StageRecord, TimerConfig } from './domain';
 
 export const STORAGE_KEY = 'shot-timer:v1';
-const fresh = (): SavedData => ({ version: 1, config: { ...DEFAULT_CONFIG }, profiles: [], history: [] });
+const fresh = (): SavedData => ({ version: 1, debugMode: false, config: { ...DEFAULT_CONFIG }, profiles: [], history: [] });
 const obj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null;
 const num = (x: unknown, min: number, max: number): x is number => typeof x === 'number' && Number.isFinite(x) && x >= min && x <= max;
 export function validSettings(x: unknown): x is DetectorSettings {
@@ -27,7 +27,8 @@ export function decodeData(raw: string | null): { data: SavedData; warning: stri
     const config = validConfig(value.config) ? { ...value.config } : { ...DEFAULT_CONFIG };
     if (!profiles.some(p => p.id === config.activeProfileId)) config.activeProfileId = profiles[0]?.id ?? null;
     const recovered = !validConfig(value.config) || !Array.isArray(value.profiles) || !Array.isArray(value.history) || profiles.length !== value.profiles.length || history.length !== Math.min(100, value.history.length);
-    return { data: { version: 1, config, profiles, history }, warning: recovered ? 'Some saved data could not be read. Valid profiles and stages were recovered; the original data has not been overwritten. Clear stored data in Settings to resume saving.' : null };
+    const debugMode = typeof value.debugMode === 'boolean' ? value.debugMode : false;
+    return { data: { version: 1, debugMode, config, profiles, history }, warning: recovered ? 'Some saved data could not be read. Valid profiles and stages were recovered; the original data has not been overwritten. Clear stored data in Settings to resume saving.' : null };
   } catch {
     return { data: fresh(), warning: 'Saved data could not be read and has not been overwritten. Clear stored data in Settings to resume saving.' };
   }
@@ -35,5 +36,5 @@ export function decodeData(raw: string | null): { data: SavedData; warning: stri
 /** Explicit allowlist prevents transient calibration traces ever entering persistence. */
 export function encodeData(data: SavedData): string {
   const profile = (p: CalibrationProfile): CalibrationProfile => ({ id: p.id, name: p.name, notes: p.notes, createdAt: p.createdAt, settings: { thresholdDb: p.settings.thresholdDb, resetDb: p.settings.resetDb, lockoutMs: p.settings.lockoutMs, quietMs: p.settings.quietMs }, recommendedDb: p.recommendedDb, noiseDb: p.noiseDb, shotDb: p.shotDb, cueGuardMs: p.cueGuardMs, input: { label: p.input.label, deviceId: p.input.deviceId, sampleRate: p.input.sampleRate, echoCancellation: p.input.echoCancellation, autoGainControl: p.input.autoGainControl, noiseSuppression: p.input.noiseSuppression } });
-  return JSON.stringify({ version: 1, config: data.config, profiles: data.profiles.map(profile), history: data.history.slice(0, 100).map(r => ({ id: r.id, startedAt: r.startedAt, delaySeconds: r.delaySeconds, config: r.config, profile: profile(r.profile), durationMs: r.durationMs, interrupted: r.interrupted, shots: r.shots.map(s => ({ number: s.number, elapsedMs: s.elapsedMs, splitMs: s.splitMs, peakDb: s.peakDb, late: s.late })) })) });
+  return JSON.stringify({ version: 1, debugMode: data.debugMode, config: data.config, profiles: data.profiles.map(profile), history: data.history.slice(0, 100).map(r => ({ id: r.id, startedAt: r.startedAt, delaySeconds: r.delaySeconds, config: r.config, profile: profile(r.profile), durationMs: r.durationMs, interrupted: r.interrupted, shots: r.shots.map(s => ({ number: s.number, elapsedMs: s.elapsedMs, splitMs: s.splitMs, peakDb: s.peakDb, late: s.late })) })) });
 }

@@ -73,6 +73,7 @@ export interface StageRecord {
 }
 export interface SavedData {
   version: 1;
+  debugMode: boolean;
   config: TimerConfig;
   profiles: CalibrationProfile[];
   history: StageRecord[];

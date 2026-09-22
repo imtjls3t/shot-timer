@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+const expectedVersion = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version.replace(/\.0$/, '');
 
 async function mockMicrophone(page: Page) {
   await page.addInitScript(() => {
@@ -75,7 +78,7 @@ test('first use, delay/PAR settings, install guidance and responsive layout', as
   await expect(page.getByLabel('PAR seconds')).toHaveValue('2.5');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await go(page, 'Settings');
-  await expect(page.getByText(/Shot Timer \/ v0\.1/)).toBeVisible();
+  await expect(page.getByText(`Shot Timer / v${expectedVersion}`, { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Install Shot Timer', exact: true }).click();
   await expect(page.getByText(/In Android Chrome, open/)).toBeVisible();
   await go(page, 'History');
@@ -275,6 +278,96 @@ test('standby cancellation, zero-shot save and interruption save exactly once', 
   history = await page.evaluate(() => JSON.parse(localStorage.getItem('shot-timer:v1')!).history);
   expect(history).toHaveLength(2);
   expect(history[0].interrupted).toBe(true);
+});
+
+test('debug waveform is live, reviewable, editable, and cleared on reload or disable', async ({ page }, testInfo) => {
+  await mockMicrophone(page);
+  await page.addInitScript(() => {
+    const key = 'shot-timer:v1';
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, JSON.stringify({ version: 1, config: { minDelay: 1, maxDelay: 1, parSeconds: null, volume: .8, activeProfileId: 'fixture' }, profiles: [{ id: 'fixture', name: 'Test setup', notes: '', createdAt: new Date().toISOString(), settings: { thresholdDb: -30, resetDb: -36, lockoutMs: 100, quietMs: 25 }, recommendedDb: -30, noiseDb: -65, shotDb: -15, cueGuardMs: 150, input: { label: 'Synthetic mic', deviceId: 'test-mic', sampleRate: 48000 } }], history: [] }));
+  });
+  await page.goto('/');
+  await go(page, 'Settings');
+  const debugToggle = page.getByRole('button', { name: 'Debug mode' });
+  await expect(debugToggle).toHaveText('OFF');
+  await expect(debugToggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(debugToggle).toHaveCSS('background-color', 'rgb(255, 254, 249)');
+  await expect(page.getByText('Show live and review waveforms for new stages.')).toBeVisible();
+  await debugToggle.click();
+  await expect(debugToggle).toHaveText('ON');
+  await expect(debugToggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(debugToggle).toHaveCSS('background-color', /rgb\((41, 75, 48|60, 97, 61)\)/);
+  await go(page, 'Timer');
+  if (testInfo.project.name === 'mobile') await page.setViewportSize({ width: 393, height: 640 });
+  await page.getByRole('button', { name: 'START', exact: true }).click();
+  await expect(page.getByText('STAND BY', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Live debug waveform')).toBeVisible();
+  await expect(page.getByText('LISTENING', { exact: true })).toBeVisible();
+  if (testInfo.project.name === 'mobile') {
+    const fit = await page.evaluate(() => ({ buttonBottom: document.querySelector('.timer-start')!.getBoundingClientRect().bottom, navTop: document.querySelector('.mobile-nav')!.getBoundingClientRect().top }));
+    expect(fit.buttonBottom).toBeLessThan(fit.navTop);
+  }
+  await page.waitForTimeout(200);
+  await page.evaluate(() => (window as unknown as { fieldTestShot: () => void }).fieldTestShot());
+  await expect(page.getByLabel(/Live waveform with 1 detected shots/)).toBeVisible();
+  await page.waitForTimeout(100);
+  await page.getByRole('button', { name: 'STOP', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Stage debug review' })).toBeVisible();
+  const review = page.getByRole('region', { name: 'Stage debug review' });
+  await expect(review.getByText('1 preview shots')).toBeVisible();
+  await expect(review.getByRole('slider', { name: 'Stage waveform threshold' })).toHaveAttribute('aria-valuenow', '-30');
+  const threshold = review.getByRole('textbox', { name: 'Debug threshold' });
+  await threshold.fill('-28');
+  await expect(review.getByText('1 preview shots')).toBeVisible();
+  await review.getByRole('button', { name: 'Increase debug threshold by 1 dB' }).click();
+  await expect(threshold).toHaveValue('-27');
+  await review.getByRole('button', { name: 'Decrease debug threshold by 1 dB' }).click();
+  await expect(threshold).toHaveValue('-28');
+  await review.getByRole('button', { name: 'Update profile' }).click();
+  await expect(review.getByText('Profile threshold updated to -28.0 dBFS.')).toBeVisible();
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('shot-timer:v1')!));
+  expect(stored.debugMode).toBe(true);
+  expect(stored.profiles[0].settings).toMatchObject({ thresholdDb: -28, resetDb: -34 });
+  expect(stored.history[0].profile.settings.thresholdDb).toBe(-30);
+  expect(JSON.stringify(stored)).not.toMatch(/frames|rawAudio|originalDetections/);
+  await go(page, 'History');
+  await expect(page.getByRole('region', { name: 'Stage debug review' })).toBeVisible();
+  await expect(page.getByText('Threshold -30.0 dBFS')).toBeVisible();
+  await page.reload();
+  await go(page, 'Settings');
+  await expect(debugToggle).toHaveText('ON');
+  await go(page, 'History');
+  await expect(page.getByRole('region', { name: 'Stage debug review' })).toHaveCount(0);
+  await go(page, 'Settings');
+  await debugToggle.click();
+  await expect(debugToggle).toHaveText('OFF');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('shot-timer:v1')!).debugMode)).toBe(false);
+  if (testInfo.project.name === 'mobile') {
+    // Shared chart surface: browser-native touch gestures must move the
+    // threshold without panning the page underneath.
+    await debugToggle.click();
+    await go(page, 'Timer');
+    await page.getByRole('button', { name: 'START', exact: true }).click();
+    await expect(page.getByText('LISTENING', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'STOP', exact: true }).click();
+    const chart = page.getByRole('region', { name: 'Stage debug review' }).getByRole('slider');
+    await chart.scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollBy(0, 200));
+    const box = await chart.boundingBox();
+    const before = await page.evaluate(() => window.scrollY);
+    const cdp = await page.context().newCDPSession(page);
+    const x = Math.round(box!.x + box!.width / 2);
+    const startY = Math.round(box!.y + box!.height * .75);
+    const endY = Math.round(box!.y + box!.height * .25);
+    expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute('class'), { x, y: startY })).toBe('threshold-drag');
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: startY }] });
+    const first = Number(await chart.getAttribute('aria-valuenow'));
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: endY }] });
+    await expect.poll(async () => Number(await chart.getAttribute('aria-valuenow'))).toBeGreaterThan(first + 20);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  }
 });
 
 test('discarding or leaving calibration releases the displayed traces', async ({ page }) => {

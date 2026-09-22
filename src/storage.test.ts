@@ -7,11 +7,11 @@ const profile: CalibrationProfile = { id: 'p1', name: 'Test AEG', notes: '', cre
 const record: StageRecord = { id: 'r1', startedAt: '2026-09-21', delaySeconds: 2, config: DEFAULT_CONFIG, profile, shots: [], durationMs: 1000, interrupted: false };
 describe('device storage', () => {
   it('round trips settings, profiles, and zero-shot stages', () => {
-    const data: SavedData = { version: 1, config: { ...DEFAULT_CONFIG, activeProfileId: 'p1' }, profiles: [profile], history: [record] };
+    const data: SavedData = { version: 1, debugMode: true, config: { ...DEFAULT_CONFIG, activeProfileId: 'p1' }, profiles: [profile], history: [record] };
     expect(decodeData(encodeData(data))).toEqual({ data, warning: null });
   });
   it('limits retention to 100 newest stages', () => {
-    const data: SavedData = { version: 1, config: DEFAULT_CONFIG, profiles: [profile], history: Array.from({ length: 130 }, (_, i) => ({ ...record, id: String(i) })) };
+    const data: SavedData = { version: 1, debugMode: false, config: DEFAULT_CONFIG, profiles: [profile], history: Array.from({ length: 130 }, (_, i) => ({ ...record, id: String(i) })) };
     const decoded = decodeData(encodeData(data)).data;
     expect(decoded.history).toHaveLength(100);
     expect(decoded.history[0].id).toBe('0');
@@ -19,7 +19,7 @@ describe('device storage', () => {
   });
   it('does not serialize injected transient waveform or raw audio fields', () => {
     const contaminated = { ...profile, trace: [{ peakDb: -20 }], rawAudio: [1, 2, 3] };
-    const data: SavedData = { version: 1, config: DEFAULT_CONFIG, profiles: [contaminated], history: [{ ...record, profile: contaminated }] };
+    const data: SavedData = { version: 1, debugMode: true, config: DEFAULT_CONFIG, profiles: [contaminated], history: [{ ...record, profile: contaminated }] };
     const saved = encodeData(data);
     expect(saved).not.toContain('trace'); expect(saved).not.toContain('rawAudio');
   });
@@ -32,5 +32,12 @@ describe('device storage', () => {
     expect(result.data.history).toHaveLength(1);
     expect(result.data.config.minDelay).toBe(1);
     expect(result.data.config.activeProfileId).toBe('p1');
+  });
+  it('defaults older saved data to debug mode off without discarding history', () => {
+    const saved = JSON.stringify({ version: 1, config: DEFAULT_CONFIG, profiles: [profile], history: [record] });
+    const restored = decodeData(saved);
+    expect(restored.warning).toBeNull();
+    expect(restored.data.debugMode).toBe(false);
+    expect(restored.data.history).toHaveLength(1);
   });
 });
