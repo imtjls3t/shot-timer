@@ -57,7 +57,7 @@ export default function App() {
     setMessage('All Shot Timer settings, profiles, and strings were deleted from this device. This cannot be undone.');
   }
   return <div className="app-shell">
-    <header className="app-header"><div className="header-inner"><button className="brand" disabled={busy} onClick={() => navigate('timer')} aria-label="Shot Timer home"><span className="brand-mark"><TimerIcon size={21}/></span><span>Shot Timer<span className="brand-slash">/</span></span><small>AIRSOFT PRACTICE</small></button>
+    <header className="app-header"><div className="header-inner"><button className="brand" disabled={busy} onClick={() => navigate('timer')} aria-label="Shot Timer home"><span className="brand-mark"><TimerIcon size={21}/></span><span>Shot Timer</span></button>
       <nav className="desktop-nav" aria-label="Main navigation">{screens.map(({ id, label, icon: Icon }) => <button key={id} aria-current={screen === id ? 'page' : undefined} disabled={busy && screen !== id} className={screen === id ? 'active' : ''} onClick={() => navigate(id)}><Icon size={16}/>{label}</button>)}</nav>
       <button className="install-button" disabled={installed || busy} onClick={() => void install()}>{installed ? <Check size={15}/> : <Download size={15}/>}<span>{installed ? 'Installed' : 'Install app'}</span></button></div></header>
     <main className="main-content">
@@ -70,7 +70,7 @@ export default function App() {
       {screen === 'history' && <History history={data.history} onDelete={id => setData(d => ({ ...d, history: d.history.filter(r => r.id !== id) }))} onClear={() => setData(d => ({ ...d, history: [] }))}/>}
       {screen === 'settings' && <Settings config={data.config} onConfig={config => setData(d => ({ ...d, config }))} onClear={clearData} onInstall={() => void install()} installed={installed}/>}
     </main>
-    <footer className="app-footer"><span>Shot Timer / <span>BUILT FOR BETTER PRACTICE</span></span><span><i className={`status-dot ${offlineReady || installed ? 'available' : ''}`}/>{offlineReady ? 'Ready to work offline' : 'PRIVATE BY DESIGN'}</span></footer>
+    <footer className="app-footer"><span>Shot Timer</span><span><i className={`status-dot ${offlineReady || installed ? 'available' : ''}`}/>{offlineReady ? 'Ready to work offline' : 'PRIVATE BY DESIGN'}</span></footer>
     <nav className="mobile-nav" aria-label="Mobile navigation">{screens.map(({ id, label, icon: Icon }) => <button key={id} aria-current={screen === id ? 'page' : undefined} disabled={busy && screen !== id} className={screen === id ? 'active' : ''} onClick={() => navigate(id)}><Icon size={20}/><span>{label}</span></button>)}</nav>
   </div>;
 }

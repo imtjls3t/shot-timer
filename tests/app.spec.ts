@@ -61,6 +61,8 @@ async function go(page: Page, label: string) {
 test('first use, delay/PAR settings, install guidance and responsive layout', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('region', { name: 'Shot timer' })).toBeVisible();
+  await expect(page.getByText('AIRSOFT PRACTICE', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('BUILT FOR BETTER PRACTICE', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Calibrate to get started' })).toBeVisible();
   await page.getByLabel('Minimum start delay').fill('3');
   await page.getByLabel('Maximum start delay').fill('6');
