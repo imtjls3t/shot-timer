@@ -45,6 +45,7 @@ export function Calibration({ profiles, activeId, volume, onSelect, onDelete, on
   const [updatedProfile, setUpdatedProfile] = useState('');
   const engine = useRef<AudioEngine | null>(null);
   const wake = useRef<WakeLockSentinel | null>(null);
+  const validationRef = useRef<HTMLDivElement | null>(null);
   const input = useRef<InputInfo | null>(null);
   const ambient = useRef<LevelFrame[]>([]);
   const frames = useRef<LevelFrame[]>([]);
@@ -79,6 +80,19 @@ export function Calibration({ profiles, activeId, volume, onSelect, onDelete, on
     const timer = window.setInterval(() => setElapsed(Math.max(0, (engine.current?.nowMs ?? 0) - captureStart.current)), 100);
     return () => clearInterval(timer);
   }, [capturing]);
+  useEffect(() => {
+    if (!validation) return;
+    let settledFrame = 0;
+    const layoutFrame = requestAnimationFrame(() => {
+      settledFrame = requestAnimationFrame(() => {
+        const target = validationRef.current;
+        if (!target) return;
+        const top = window.scrollY + target.getBoundingClientRect().top - 20;
+        window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+      });
+    });
+    return () => { cancelAnimationFrame(layoutFrame); cancelAnimationFrame(settledFrame); };
+  }, [validation]);
 
   async function begin(kind: CaptureKind) {
     if (kindRef.current) return;
@@ -196,8 +210,7 @@ export function Calibration({ profiles, activeId, volume, onSelect, onDelete, on
           {(capturing === 'sample' || capturing === 'validation') && <button className="button primary" onClick={() => void finish()}><Check size={18}/>Done — review test</button>}
           <button className="button subtle" onClick={() => void finish('Test canceled. No test audio was recorded.')} >Cancel test</button>
         </section> : stage === 'intro' ? <section className="card calibration-intro">
-          <span className="feature-icon"><Activity size={30}/></span><h2>Make it yours.</h2>
-          <p>Airsoft sounds different. We’ll measure your room, learn your gun’s report, and help you choose a level that catches each shot once.</p>
+          <span className="feature-icon"><Activity size={30}/></span>
           <div className="setup-points"><div><span>01</span><p>Place the phone beside your practice position, with the microphone uncovered.</p></div><div><span>02</span><p>Use the same gun, distance, and room you plan to practice in.</p></div><div><span>03</span><p>Have ten shots ready: five to calibrate, five to validate.</p></div></div>
           <button className="button primary" onClick={() => void begin('ambient')}><Mic size={18}/>Start calibration<ArrowRight size={18}/></button>
           <span className="privacy-caption"><ShieldCheck size={14}/>On your device. No audio recordings.</span>
@@ -212,7 +225,7 @@ export function Calibration({ profiles, activeId, volume, onSelect, onDelete, on
             </section>
           </>}
           {validation && recommendation && <>
-            <Waveform title="Validation test" trace={validation} settings={settings} recommendedDb={recommendation.settings.thresholdDb} noiseDb={recommendation.noiseDb} onThreshold={threshold}/>
+            <div className="validation-results" ref={validationRef}><Waveform title="Validation test" trace={validation} settings={settings} recommendedDb={recommendation.settings.thresholdDb} noiseDb={recommendation.noiseDb} onThreshold={threshold}/></div>
             <Notice tone={changed ? 'info' : validationPasses ? 'success' : 'error'}>{changed ? `Preview with adjusted settings. The original test detected ${validation.originalDetections.filter(d => d.accepted).length} shots at ${dbText(validation.originalSettings!.thresholdDb)}. Run validation again before saving.` : validationPasses ? 'Five shots detected. Check that the numbered highlights match your five actual shots.' : `Detected ${validationEvents.length} of five expected shots. Adjust the threshold or separation, then repeat validation.`}</Notice>
           </>}
           <div className="calibration-actions"><button className="button primary" onClick={() => void begin('cue')}><Volume2 size={18}/>{validation ? 'Repeat validation' : 'Validate with five more shots'}<ArrowRight size={18}/></button><button className="button secondary" onClick={() => { setValidation(null); void begin('sample'); }}>Repeat calibration shots</button></div>

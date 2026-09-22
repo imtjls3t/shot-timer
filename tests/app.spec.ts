@@ -145,6 +145,8 @@ test('real worklet calibration, interactive replay, validation, timer and privat
   await fiveShots(page);
   await page.getByRole('button', { name: 'Done — review test' }).click();
   const validation = page.getByRole('region', { name: 'Validation test', exact: true });
+  await expect.poll(() => validation.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBeGreaterThanOrEqual(0);
+  await expect.poll(() => validation.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBeLessThanOrEqual(80);
   await expect(validation.getByText('5 / 5 shots')).toBeVisible();
   await page.getByLabel('Shot threshold', { exact: true }).fill(String(Number(recommended) - 1));
   await expect(page.getByText(/Preview with adjusted settings/)).toBeVisible();
