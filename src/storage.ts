@@ -1,5 +1,5 @@
 import { DEFAULT_CONFIG } from './domain';
-import type { CalibrationProfile, DetectorSettings, SavedData, StringRecord, TimerConfig } from './domain';
+import type { CalibrationProfile, DetectorSettings, SavedData, StageRecord, TimerConfig } from './domain';
 
 export const STORAGE_KEY = 'shot-timer:v1';
 const fresh = (): SavedData => ({ version: 1, config: { ...DEFAULT_CONFIG }, profiles: [], history: [] });
@@ -14,7 +14,7 @@ export function validProfile(x: unknown): x is CalibrationProfile {
 function validConfig(x: unknown): x is TimerConfig {
   return obj(x) && num(x.minDelay, 1, 8) && num(x.maxDelay, 1, 8) && x.minDelay <= x.maxDelay && (x.parSeconds === null || num(x.parSeconds, 0.1, 999.99)) && num(x.volume, 0.05, 1) && (x.activeProfileId === null || typeof x.activeProfileId === 'string');
 }
-function validRecord(x: unknown): x is StringRecord {
+function validRecord(x: unknown): x is StageRecord {
   return obj(x) && typeof x.id === 'string' && typeof x.startedAt === 'string' && num(x.delaySeconds, 1, 8) && validConfig(x.config) && validProfile(x.profile) && num(x.durationMs, 0, Number.MAX_SAFE_INTEGER) && typeof x.interrupted === 'boolean' && Array.isArray(x.shots) && x.shots.every(s => obj(s) && num(s.number, 1, 1000000) && num(s.elapsedMs, 0, Number.MAX_SAFE_INTEGER) && num(s.splitMs, 0, Number.MAX_SAFE_INTEGER) && num(s.peakDb, -120, 10) && typeof s.late === 'boolean');
 }
 export function decodeData(raw: string | null): { data: SavedData; warning: string | null } {
@@ -27,7 +27,7 @@ export function decodeData(raw: string | null): { data: SavedData; warning: stri
     const config = validConfig(value.config) ? { ...value.config } : { ...DEFAULT_CONFIG };
     if (!profiles.some(p => p.id === config.activeProfileId)) config.activeProfileId = profiles[0]?.id ?? null;
     const recovered = !validConfig(value.config) || !Array.isArray(value.profiles) || !Array.isArray(value.history) || profiles.length !== value.profiles.length || history.length !== Math.min(100, value.history.length);
-    return { data: { version: 1, config, profiles, history }, warning: recovered ? 'Some saved data could not be read. Valid profiles and strings were recovered; the original data has not been overwritten. Clear stored data in Settings to resume saving.' : null };
+    return { data: { version: 1, config, profiles, history }, warning: recovered ? 'Some saved data could not be read. Valid profiles and stages were recovered; the original data has not been overwritten. Clear stored data in Settings to resume saving.' : null };
   } catch {
     return { data: fresh(), warning: 'Saved data could not be read and has not been overwritten. Clear stored data in Settings to resume saving.' };
   }

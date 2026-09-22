@@ -40,6 +40,8 @@ Browser tests run against the production build. They inject a synthetic micropho
 
 ## Install and deploy
 
+Each deployment advances the displayed version by one minor step. Run `npm run version:next` before committing a deployment; this updates both package files from `0.1.0` to `0.2.0`, then through `0.9.0` to `0.10.0`, `0.11.0`, and so on. The UI formats these as `v0.1`, `v0.9`, and `v0.10`. Advancing to `v1.0` is deliberately manual.
+
 The GitHub Actions workflow checks unit and browser tests, builds with the Pages base path, and deploys on pushes to `main`. In the destination GitHub repository, enable **Settings → Pages → Build and deployment → GitHub Actions**. Both a project path and a root/custom-domain Pages site are supported. No GitHub repository or remote is preconfigured in this workspace.
 
 For other static HTTPS hosting, deploy `dist/`. Set `BASE_PATH=/your-path/` when building under a subdirectory. Regenerate PNG icons with `npm run icons` after changing the SVG source. The app precaches its own worklet, icons, and application assets; it has no runtime CDN dependencies.
@@ -60,13 +62,13 @@ The worklet applies a 120 Hz high-pass filter and derives approximately 1 ms pea
 
 Start and PAR use the supplied 208 ms `assets/beep.wav` cue. A calibration-measured exclusion window (150–500 ms including cue playback and output/capture echo delay) follows each cue. **Shots inside that window are excluded**, including shots near the PAR beep. The plots mark cue exclusions where present. The timer shows the active guard. This is a deliberate tradeoff to prevent the phone counting its own speaker. Bluetooth timing and full-auto counting are not supported.
 
-Timing is based on the audio context clock, not render ticks. Browser microphone/output latency and acoustic propagation are not fully compensated; displayed hundredths do not imply certified match timing accuracy. Splits share the same input path and are generally less sensitive to a constant input offset. The app interrupts a string if it leaves the foreground or the microphone is lost. Android wake lock is requested but may be refused by the device.
+Timing is based on the audio context clock, not render ticks. Browser microphone/output latency and acoustic propagation are not fully compensated; displayed hundredths do not imply certified match timing accuracy. Splits share the same input path and are generally less sensitive to a constant input offset. The app interrupts a stage if it leaves the foreground or the microphone is lost. Android wake lock is requested but may be refused by the device.
 
 ## Data and privacy
 
 No MediaRecorder, audio blobs, PCM recording, uploads, or analytics. Raw samples exist only in browser processing buffers. During calibration, the app keeps derived peak/RMS frames in memory to draw plots and replay threshold changes. Saving, restarting, canceling the workflow, or leaving calibration releases those traces; closing a capture stops microphone tracks. There is no playback function.
 
-Only versioned settings, named profiles, and the newest 100 strings are stored in localStorage. Profile and shot serializers explicitly allowlist persisted fields. History snapshots preserve the settings used even if the original profile is deleted. Invalid/unknown storage is not silently overwritten; valid records are recovered in memory and Settings provides an explicit reset. Quota failures are surfaced. Clearing browser data can erase all local results.
+Only versioned settings, named profiles, and the newest 100 stages are stored in localStorage. Profile and shot serializers explicitly allowlist persisted fields. History snapshots preserve the settings used even if the original profile is deleted. Invalid/unknown storage is not silently overwritten; valid records are recovered in memory and Settings provides an explicit reset. Quota failures are surfaced. Clearing browser data can erase all local results.
 
 ## Physical-phone acceptance checklist
 

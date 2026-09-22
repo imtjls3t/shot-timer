@@ -40,12 +40,12 @@ export class AudioEngine {
         echoCancellation: settings.echoCancellation, noiseSuppression: settings.noiseSuppression,
         autoGainControl: settings.autoGainControl,
       };
-      track.onended = () => !this.closing && this.callbacks.interrupted?.('Microphone disconnected. Reconnect it and start a new string.');
+      track.onended = () => !this.closing && this.callbacks.interrupted?.('Microphone disconnected. Reconnect it and start a new stage.');
       track.onmute = () => !this.closing && this.callbacks.interrupted?.('Microphone was interrupted. Check that another app is not using it.');
       await this.context.audioWorklet.addModule(processorUrl);
       if (this.closing) throw new Error('Microphone setup canceled.');
       this.node = new AudioWorkletNode(this.context, 'field-detector', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
-      this.node.onprocessorerror = () => this.callbacks.interrupted?.('Audio processing stopped. Start a new string to reconnect.');
+      this.node.onprocessorerror = () => this.callbacks.interrupted?.('Audio processing stopped. Start a new stage to reconnect.');
       this.node.port.onmessage = ({ data }) => {
         if (data.type === 'frames') this.callbacks.frames?.((data.frames as LevelFrame[]).map(f => ({ ...f, t: f.t - this.origin })));
         if (data.type === 'detection') this.callbacks.detection?.({ ...data.detection, t: data.detection.t - this.origin });
@@ -57,7 +57,7 @@ export class AudioEngine {
       // Processor output is silence: the microphone is never played through the speaker.
       this.node.connect(this.context.destination);
       this.context.onstatechange = () => {
-        if (!this.closing && this.context && this.context.state !== 'running') this.callbacks.interrupted?.('Audio was paused by the phone. Return to Shot Timer and start a new string.');
+        if (!this.closing && this.context && this.context.state !== 'running') this.callbacks.interrupted?.('Audio was paused by the phone. Return to Shot Timer and start a new stage.');
       };
       if (this.context.state !== 'running') throw new Error('Audio could not start. Tap again to enable sound.');
       return this.input;

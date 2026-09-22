@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Crosshair, Mic, Play, Settings2, ShieldCheck, Square, Timer as TimerIcon } from 'lucide-react';
 import { AudioEngine, requestWakeLock } from '../audio/engine';
 import { dbText, newId, sampleDelay, seconds, shotFromDetection } from '../domain';
-import type { CalibrationProfile, Phase, ShotEvent, StringRecord, TimerConfig } from '../domain';
+import type { CalibrationProfile, Phase, ShotEvent, StageRecord, TimerConfig } from '../domain';
 import { LinkButton, Notice, ShotTable, Summary } from './common';
 
 interface Props {
   config: TimerConfig;
   profiles: CalibrationProfile[];
   onConfig: (config: TimerConfig) => void;
-  onRecord: (record: StringRecord) => void;
+  onRecord: (record: StageRecord) => void;
   onCalibrate: () => void;
   onBusy: (busy: boolean) => void;
 }
@@ -29,14 +29,14 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
   const finishRef = useRef<(reason?: string) => Promise<void>>(async () => {});
   const mounted = useRef(true);
   const finishing = useRef(false);
-  const record = useRef<StringRecord | null>(null);
+  const record = useRef<StageRecord | null>(null);
   const profile = profiles.find(p => p.id === config.activeProfileId) ?? null;
   const busy = ['preparing', 'standby', 'running'].includes(phase);
   function updatePhase(next: Phase) { phaseRef.current = next; if (mounted.current) setPhase(next); }
   useEffect(() => { onBusy(busy); return () => onBusy(false); }, [busy, onBusy]);
   useEffect(() => {
     mounted.current = true;
-    const hidden = () => { if (document.hidden && ['preparing', 'standby', 'running'].includes(phaseRef.current)) void finishRef.current('String interrupted because Shot Timer left the foreground. Keep this screen open while timing.'); };
+    const hidden = () => { if (document.hidden && ['preparing', 'standby', 'running'].includes(phaseRef.current)) void finishRef.current('Stage interrupted because Shot Timer left the foreground. Keep this screen open while timing.'); };
     document.addEventListener('visibilitychange', hidden);
     return () => { mounted.current = false; void engine.current?.close(); void wake.current?.release(); document.removeEventListener('visibilitychange', hidden); };
   }, []);
@@ -82,6 +82,8 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
       updatePhase('standby');
     }
     try {
+      wake.current = await requestWakeLock();
+      if (!wake.current) setWarning('Screen wake lock is unavailable. Keep the phone awake and Shot Timer visible while timing.');
       const input = await audio.open({
         frames: frames => { if (preflight) ambientPeak = Math.max(ambientPeak, ...frames.map(f => f.peakDb)); },
         detection: d => {
@@ -95,8 +97,6 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
       });
       if (finishing.current || !mounted.current) { await audio.close(); return; }
       if (profile.input.deviceId && input.deviceId !== profile.input.deviceId) setWarning('The microphone differs from this profile. Recalibrate for this input to get reliable results.');
-      wake.current = await requestWakeLock();
-      if (!wake.current) setWarning('Screen wake lock is unavailable. Keep the phone awake and Shot Timer visible while timing.');
       audio.capture(null, 800);
     } catch (e) {
       await audio.close(); await wake.current?.release(); wake.current = null;
@@ -131,11 +131,11 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
     <div className="timer-layout">
       <div className="timer-main">
         <section className={`timer-display ${phase === 'running' ? 'is-running' : ''}`} aria-label="Shot timer">
-          <div className="timer-topline"><span className="timer-state"><i className={`status-dot ${busy ? 'pulse' : ''}`}/>{phase === 'preparing' ? 'CHECKING MICROPHONE' : phase === 'standby' ? 'STAND BY' : phase === 'running' ? afterPar ? 'AFTER PAR' : 'LISTENING' : phase === 'finished' ? 'STRING COMPLETE' : 'READY WHEN YOU ARE'}</span><span className="timer-mode">SEMI-AUTO</span></div>
+          <div className="timer-topline"><span className="timer-state"><i className={`status-dot ${busy ? 'pulse' : ''}`}/>{phase === 'preparing' ? 'CHECKING MICROPHONE' : phase === 'standby' ? 'STAND BY' : phase === 'running' ? afterPar ? 'AFTER PAR' : 'LISTENING' : phase === 'finished' ? 'STAGE COMPLETE' : 'READY'}</span><span className="timer-mode">SEMI-AUTO</span></div>
           <div className="timer-digits" aria-live="off">{phase === 'standby' ? <span className="standby-text">Stand by.</span> : <>{seconds(displayTime)}<span>s</span></>}</div>
           <div className="timer-subline">{phase === 'standby' ? 'WAIT FOR START SIGNAL' : phase === 'finished' ? shots.length ? 'LAST SHOT TIME' : 'NO SHOTS RECORDED' : phase === 'preparing' ? 'CHECKING SIGNAL…' : 'ELAPSED TIME'}</div>
           <div className="timer-metrics"><div><span>SHOTS</span><strong>{String(shots.length).padStart(2, '0')}</strong></div><div><span>LAST SPLIT</span><strong>{shots.length > 1 ? seconds(shots.at(-1)!.splitMs) : '—'}<small>s</small></strong></div><div><span>PAR TIME</span><strong>{config.parSeconds === null ? 'OFF' : config.parSeconds.toFixed(2)}{config.parSeconds !== null && <small>s</small>}</strong></div></div>
-          {busy ? <button className="timer-start stop" onClick={() => void finish()}><Square size={19} fill="currentColor"/>{phase === 'standby' || phase === 'preparing' ? 'Cancel start' : 'Stop string'}<span>{phase === 'running' ? 'SAVE & REVIEW' : 'NO STRING SAVED'}</span></button> : <button className="timer-start" onClick={profile ? () => void start() : onCalibrate}><Play size={21} fill="currentColor"/>{profile ? phase === 'finished' ? 'Start next string' : 'Start string' : 'Calibrate to get started'}<ArrowRight size={20}/></button>}
+          {busy ? <button className="timer-start stop" onClick={() => void finish()}><Square size={19} fill="currentColor"/>{phase === 'standby' || phase === 'preparing' ? 'CANCEL' : 'STOP'}</button> : <button className="timer-start" onClick={profile ? () => void start() : onCalibrate}><Play size={21} fill="currentColor"/>{profile ? 'START' : 'CALIBRATE'}</button>}
           <div className="timer-foot"><span><Mic size={13}/>{busy ? 'Microphone active' : 'Microphone off'}</span><span>{saved ? 'Saved on this device' : profile ? `${config.minDelay.toFixed(1)}–${config.maxDelay.toFixed(1)}s random delay` : 'Calibration required'}</span></div>
         </section>
         <section className="card shots-card"><div className="section-heading"><h2>Shot breakdown</h2><span className="pill">{shots.length} SHOTS</span></div><ShotTable shots={shots}/><Summary shots={shots}/></section>
@@ -154,7 +154,7 @@ export function Timer({ config, profiles, onConfig, onRecord, onCalibrate, onBus
         </section>
       </aside>
     </div>
-    <div className="page-bottom-note"><ShieldCheck size={15}/><span>Offline ready after your first visit. Your strings stay on your phone.</span><LinkButton onClick={onCalibrate}>Fine-tune detection</LinkButton></div>
+    <div className="page-bottom-note"><ShieldCheck size={15}/><span>Offline ready after your first visit. Your stages stay on your phone.</span><LinkButton onClick={onCalibrate}>Fine-tune detection</LinkButton></div>
   </>;
 }
 function ActivityIcon() { return <svg width="54" height="26" viewBox="0 0 54 26" fill="none" aria-hidden="true"><path d="M1 13h10l4-6 5 14 7-20 6 24 5-12h15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }

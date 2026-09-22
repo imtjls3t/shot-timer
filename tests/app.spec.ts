@@ -63,7 +63,8 @@ test('first use, delay/PAR settings, install guidance and responsive layout', as
   await expect(page.getByRole('region', { name: 'Shot timer' })).toBeVisible();
   await expect(page.getByText('AIRSOFT PRACTICE', { exact: true })).toHaveCount(0);
   await expect(page.getByText('BUILT FOR BETTER PRACTICE', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Calibrate to get started' })).toBeVisible();
+  await expect(page.getByText('READY', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'CALIBRATE', exact: true })).toBeVisible();
   await page.getByLabel('Minimum start delay').fill('3');
   await page.getByLabel('Maximum start delay').fill('6');
   await page.getByRole('switch', { name: 'Enable PAR time' }).click();
@@ -74,6 +75,7 @@ test('first use, delay/PAR settings, install guidance and responsive layout', as
   await expect(page.getByLabel('PAR seconds')).toHaveValue('2.5');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await go(page, 'Settings');
+  await expect(page.getByText(/Shot Timer \/ v0\.1/)).toBeVisible();
   await page.getByRole('button', { name: 'Install Shot Timer', exact: true }).click();
   await expect(page.getByText(/In Android Chrome, open/)).toBeVisible();
   await go(page, 'History');
@@ -83,7 +85,7 @@ test('first use, delay/PAR settings, install guidance and responsive layout', as
 test('permission denial has an actionable recovery and leaves navigation usable', async ({ page }) => {
   await page.addInitScript(() => { Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: () => Promise.reject(new DOMException('Denied', 'NotAllowedError')) }); });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Calibrate to get started' }).click();
+  await page.getByRole('button', { name: 'CALIBRATE', exact: true }).click();
   await page.getByRole('button', { name: 'Start calibration', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Microphone permission was denied');
   await go(page, 'Timer');
@@ -95,7 +97,7 @@ test('real worklet calibration, interactive replay, validation, timer and privat
   await page.goto('/');
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.getByRole('button', { name: 'Calibrate to get started' }).click();
+  await page.getByRole('button', { name: 'CALIBRATE', exact: true }).click();
   await page.getByRole('button', { name: 'Start calibration', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Start five-shot test' })).toBeVisible({ timeout: 12000 });
   await page.getByRole('button', { name: 'Start five-shot test' }).click();
@@ -185,12 +187,12 @@ test('real worklet calibration, interactive replay, validation, timer and privat
   await page.getByLabel('Maximum start delay').fill('1');
   await page.getByRole('switch', { name: 'Enable PAR time' }).click();
   await page.getByLabel('PAR seconds').fill('1');
-  await page.getByRole('button', { name: 'Start string', exact: true }).click();
+  await page.getByRole('button', { name: 'START', exact: true }).click();
   await expect(page.getByText('STAND BY', { exact: true })).toBeVisible();
   // Schedule against the audio cue, not Playwright's UI polling latency: the
   // second shot must not accidentally fall inside the intentional PAR guard.
   await page.evaluate(() => (window as unknown as { fieldTestTimerShots: () => void }).fieldTestTimerShots());
-  await expect(page.getByText('STRING COMPLETE')).toBeVisible();
+  await expect(page.getByText('STAGE COMPLETE')).toBeVisible();
   await expect(page.getByText('3 SHOTS', { exact: true })).toBeVisible();
   await expect(page.getByText('AFTER PAR', { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('timer.png'), fullPage: true });
@@ -230,24 +232,36 @@ test('production service worker, manifest, icons and worklet are available offli
 test('standby cancellation, zero-shot save and interruption save exactly once', async ({ page }) => {
   await mockMicrophone(page);
   await page.addInitScript(() => {
+    const host = window as unknown as { fieldTestWakeLock: { requested: number; released: number } };
+    host.fieldTestWakeLock = { requested: 0, released: 0 };
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => {
+      host.fieldTestWakeLock.requested += 1;
+      return { release: async () => { host.fieldTestWakeLock.released += 1; } };
+    } } });
+  });
+  await page.addInitScript(() => {
     const key = 'shot-timer:v1';
     if (localStorage.getItem(key)) return;
     localStorage.setItem(key, JSON.stringify({ version: 1, config: { minDelay: 1, maxDelay: 1, parSeconds: null, volume: .8, activeProfileId: 'fixture' }, profiles: [{ id: 'fixture', name: 'Test setup', notes: '', createdAt: new Date().toISOString(), settings: { thresholdDb: -30, resetDb: -36, lockoutMs: 100, quietMs: 25 }, recommendedDb: -30, noiseDb: -65, shotDb: -15, cueGuardMs: 150, input: { label: 'Synthetic mic', deviceId: 'test-mic', sampleRate: 48000 } }], history: [] }));
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Start string', exact: true }).click();
+  await expect(page.getByText('READY', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'START', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { fieldTestWakeLock: { requested: number } }).fieldTestWakeLock.requested)).toBe(1);
   await expect(page.getByText('STAND BY', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /Cancel start/ }).click();
-  await expect(page.getByRole('button', { name: 'Start string', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'CANCEL', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { fieldTestWakeLock: { released: number } }).fieldTestWakeLock.released)).toBe(1);
+  await expect(page.getByRole('button', { name: 'START', exact: true })).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('shot-timer:v1')!).history.length)).toBe(0);
-  await page.getByRole('button', { name: 'Start string', exact: true }).click();
+  await page.getByRole('button', { name: 'START', exact: true }).click();
   await expect(page.getByText('LISTENING', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /Stop string/ }).click();
-  await expect(page.getByText('STRING COMPLETE')).toBeVisible();
+  await page.getByRole('button', { name: 'STOP', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { fieldTestWakeLock: { released: number } }).fieldTestWakeLock.released)).toBe(2);
+  await expect(page.getByText('STAGE COMPLETE')).toBeVisible();
   let history = await page.evaluate(() => JSON.parse(localStorage.getItem('shot-timer:v1')!).history);
   expect(history).toHaveLength(1);
   expect(history[0].shots).toHaveLength(0);
-  await page.getByRole('button', { name: 'Start next string' }).click();
+  await page.getByRole('button', { name: 'START', exact: true }).click();
   await expect(page.getByText('LISTENING', { exact: true })).toBeVisible();
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
@@ -256,7 +270,8 @@ test('standby cancellation, zero-shot save and interruption save exactly once', 
     Object.defineProperty(document, 'hidden', { configurable: true, value: false });
   });
   await expect(page.getByRole('alert')).toContainText('left the foreground');
-  await expect(page.getByText('STRING COMPLETE')).toBeVisible();
+  await expect(page.getByText('STAGE COMPLETE')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { fieldTestWakeLock: { released: number } }).fieldTestWakeLock.released)).toBe(3);
   history = await page.evaluate(() => JSON.parse(localStorage.getItem('shot-timer:v1')!).history);
   expect(history).toHaveLength(2);
   expect(history[0].interrupted).toBe(true);

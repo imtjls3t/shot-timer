@@ -54,7 +54,7 @@ export default function App() {
     try { localStorage.removeItem(STORAGE_KEY); setStorageBlocked(false); setStorageWarning(null); }
     catch { setStorageWarning('Storage could not be cleared. Check your browser’s storage settings.'); return; }
     setData({ version: 1, config: { ...DEFAULT_CONFIG }, profiles: [], history: [] });
-    setMessage('All Shot Timer settings, profiles, and strings were deleted from this device. This cannot be undone.');
+    setMessage('All Shot Timer settings, profiles, and stages were deleted from this device. This cannot be undone.');
   }
   return <div className="app-shell">
     <header className="app-header"><div className="header-inner"><button className="brand" disabled={busy} onClick={() => navigate('timer')} aria-label="Shot Timer home"><span className="brand-mark"><TimerIcon size={21}/></span><span>Shot Timer</span></button>

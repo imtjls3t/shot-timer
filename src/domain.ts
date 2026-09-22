@@ -61,7 +61,7 @@ export interface ShotEvent {
   peakDb: number;
   late: boolean;
 }
-export interface StringRecord {
+export interface StageRecord {
   id: string;
   startedAt: string;
   delaySeconds: number;
@@ -75,7 +75,7 @@ export interface SavedData {
   version: 1;
   config: TimerConfig;
   profiles: CalibrationProfile[];
-  history: StringRecord[];
+  history: StageRecord[];
 }
 export const DEFAULT_CONFIG: TimerConfig = {
   minDelay: 1, maxDelay: 8, parSeconds: null, volume: 0.8, activeProfileId: null,
