@@ -8,6 +8,7 @@ import type { CalibrationProfile, Phase, ShotEvent, StageRecord, TimerConfig } f
 import { LinkButton, Notice, ShotTable, Summary } from './common';
 import { LiveWaveform } from './LiveWaveform';
 import { StageDebugReview } from './StageDebugReview';
+import { StartDelayControls } from './StartDelayControls';
 
 interface Props {
   config: TimerConfig;
@@ -170,8 +171,8 @@ export function Timer({ config, profiles, debugMode, debugTraces, onConfig, onRe
       </div>
       <aside className="timer-sidebar">
         <section className="card setup-card"><div className="section-heading"><h2>Session setup</h2><Settings2 size={19}/></div>
-          <fieldset disabled={busy}><div className="setting-label"><span>Start delay</span><span className="mini-badge">RANDOM</span></div><div className="two-columns delay-inputs"><label>Minimum<span className="input-with-unit"><input aria-label="Minimum start delay" type="number" min={1} max={config.maxDelay} step={0.1} value={config.minDelay} onChange={e => onConfig({ ...config, minDelay: Math.max(1, Math.min(config.maxDelay, +e.target.value)) })}/><small>sec</small></span></label><label>Maximum<span className="input-with-unit"><input aria-label="Maximum start delay" type="number" min={config.minDelay} max={8} step={0.1} value={config.maxDelay} onChange={e => onConfig({ ...config, maxDelay: Math.min(8, Math.max(config.minDelay, +e.target.value)) })}/><small>sec</small></span></label></div>
-          <div className="range-rail"><span style={{ left: `${(config.minDelay - 1) / 7 * 100}%`, right: `${(8 - config.maxDelay) / 7 * 100}%` }}/></div><div className="range-labels"><span>1 SEC</span><span>8 SEC</span></div>
+          <fieldset disabled={busy}><div className="setting-label"><span>Start delay</span><span className="mini-badge">RANDOM</span></div>
+          <StartDelayControls config={config} onConfig={onConfig} disabled={busy}/>
           <div className="setting-divider"/>
           <div className="setting-label"><span><TimerIcon size={16}/>PAR time</span><button role="switch" aria-checked={config.parSeconds !== null} aria-label="Enable PAR time" className={`toggle ${config.parSeconds !== null ? 'on' : ''}`} onClick={() => onConfig({ ...config, parSeconds: config.parSeconds === null ? 5 : null })}><span/></button></div><p className="helper">Set a target. Hear a second beep when time is up.</p>
           {config.parSeconds !== null && <label className="par-input">Target time<span className="input-with-unit"><input aria-label="PAR seconds" type="number" min={0.1} max={999.99} step={0.1} value={config.parSeconds} onChange={e => onConfig({ ...config, parSeconds: Math.max(0.1, Math.min(999.99, +e.target.value)) })}/><small>sec</small></span><span className="helper">Late shots are marked during a 2-second grace period.</span></label>}

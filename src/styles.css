@@ -43,5 +43,15 @@
 .button.secondary.debug-toggle[aria-pressed="true"]{background:#294b30;border-color:#294b30;color:#f4f8eb}
 .button.secondary.debug-toggle[aria-pressed="true"]:hover:not(:disabled){background:#3c613d}
 .settings-card>.debug-description{margin-top:13px}
+.delay-range{position:relative;height:44px;margin:8px 12px 0;touch-action:none;user-select:none;cursor:pointer}
+.delay-range:before{content:'';position:absolute;left:0;right:0;top:20px;height:4px;border-radius:3px;background:#e8ebdf}
+.delay-range-fill{position:absolute;top:20px;height:4px;border-radius:3px;background:#a8bd80;pointer-events:none}
+.delay-range-thumb{position:absolute;top:22px;width:44px;height:44px;transform:translate(-50%,-50%);border:0;background:transparent;padding:0;display:flex;align-items:center;justify-content:center;touch-action:none;z-index:1}
+.delay-range-thumb:before{content:'';width:20px;height:20px;border:2px solid #668748;background:#f9fbf2;border-radius:50%;box-shadow:0 1px 4px #294b3033}
+.delay-range-thumb:hover:before,.delay-range-thumb:focus-visible:before{background:#e6f2ce;border-color:#294b30}
+.delay-range-thumb:active:not(:disabled){transform:translate(-50%,-50%)}
+.delay-range+.range-labels{margin:0 10px}
+.input-with-unit:focus-within{border-color:#93ae51;box-shadow:0 0 0 3px #93ae51}
+.input-with-unit input:focus-visible{outline:none}
 @media(max-width:760px){.timer-display.debug-enabled .timer-digits{font-size:clamp(76px,12vw,104px);padding-top:18px}.timer-display.debug-enabled .timer-digits .standby-text{font-size:clamp(42px,8vw,58px)}.timer-display.debug-enabled .timer-metrics{margin:14px 0 13px}.timer-display.debug-enabled .live-debug svg{height:66px}.timer-display.debug-enabled .live-debug{margin-bottom:12px}.history-detail>.stage-debug-review{margin:0 14px 16px}}
 @media(max-width:760px) and (max-height:700px){.main-content{padding-top:15px}.timer-display.debug-enabled{padding-top:14px;padding-bottom:12px}.timer-display.debug-enabled .timer-digits{font-size:72px;padding-top:8px;padding-bottom:2px}.timer-display.debug-enabled .timer-digits .standby-text{font-size:42px;line-height:1.8}.timer-display.debug-enabled .timer-metrics{margin:9px 0 10px}.timer-display.debug-enabled .timer-metrics>div{gap:5px}.timer-display.debug-enabled .live-debug svg{height:52px}.timer-display.debug-enabled .live-debug{margin-bottom:8px}.timer-display.debug-enabled .timer-foot{margin-top:8px}}

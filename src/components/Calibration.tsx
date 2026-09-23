@@ -7,6 +7,7 @@ import { replay } from '../audio/detector';
 import { dbText, DEFAULT_DETECTOR, newId } from '../domain';
 import type { CalibrationProfile, CalibrationTrace, DetectorSettings, InputInfo, LevelFrame } from '../domain';
 import { LinkButton, Notice } from './common';
+import { ShotSeparationInput } from './ShotSeparationInput';
 import { ThresholdEditor } from './ThresholdEditor';
 import { Waveform } from './Waveform';
 
@@ -218,7 +219,7 @@ export function Calibration({ profiles, activeId, volume, onSelect, onDelete, on
           {sample && recommendation && <>
             <Waveform title="Calibration test" trace={sample} settings={settings} recommendedDb={recommendation.settings.thresholdDb} noiseDb={recommendation.noiseDb} onThreshold={threshold}/>
             <section className="card tuning-controls"><div className="section-heading"><h3><SlidersHorizontal size={18}/>Dial it in</h3><button className="text-button" onClick={() => { setSettings({ ...recommendation.settings }); setConfirmed(false); }}><RotateCcw size={14}/>Reset to recommended</button></div>
-              <div className="two-columns"><label>Shot threshold <ThresholdEditor value={settings.thresholdDb} onChange={threshold}/></label><label>Minimum shot separation <span className="input-with-unit"><input aria-label="Minimum shot separation" type="number" min={60} max={500} step={10} value={settings.lockoutMs} onChange={e => { setSettings(s => ({ ...s, lockoutMs: Math.max(60, Math.min(500, +e.target.value)) })); setConfirmed(false); }}/><small>ms</small></span></label></div>
+              <div className="two-columns"><label>Shot threshold <ThresholdEditor value={settings.thresholdDb} onChange={threshold}/></label><label>Minimum shot separation <ShotSeparationInput value={settings.lockoutMs} onChange={lockoutMs => { setSettings(s => ({ ...s, lockoutMs })); setConfirmed(false); }}/></label></div>
               <p className="helper">Lower dBFS values pick up quieter sounds. Separation suppresses echoes but also sets the fastest split that can be detected. Reset level: {dbText(settings.resetDb)}.</p>
               {recommendation.warnings.map(w => <Notice key={w}>{w}</Notice>)}
               {settings.thresholdDb < recommendation.noiseDb + 6 && <Notice tone="error">This threshold is close to background noise. False detections are likely.</Notice>}

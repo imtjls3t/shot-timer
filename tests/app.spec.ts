@@ -68,13 +68,13 @@ test('first use, delay/PAR settings, install guidance and responsive layout', as
   await expect(page.getByText('BUILT FOR BETTER PRACTICE', { exact: true })).toHaveCount(0);
   await expect(page.getByText('READY', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'CALIBRATE', exact: true })).toBeVisible();
-  await page.getByLabel('Minimum start delay').fill('3');
-  await page.getByLabel('Maximum start delay').fill('6');
+  await page.getByRole('textbox', { name: 'Minimum start delay' }).fill('3');
+  await page.getByRole('textbox', { name: 'Maximum start delay' }).fill('6');
   await page.getByRole('switch', { name: 'Enable PAR time' }).click();
   await page.getByLabel('PAR seconds').fill('2.5');
   await page.reload();
-  await expect(page.getByLabel('Minimum start delay')).toHaveValue('3');
-  await expect(page.getByLabel('Maximum start delay')).toHaveValue('6');
+  await expect(page.getByRole('textbox', { name: 'Minimum start delay' })).toHaveValue('3');
+  await expect(page.getByRole('textbox', { name: 'Maximum start delay' })).toHaveValue('6');
   await expect(page.getByLabel('PAR seconds')).toHaveValue('2.5');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await go(page, 'Settings');
@@ -83,6 +83,87 @@ test('first use, delay/PAR settings, install guidance and responsive layout', as
   await expect(page.getByText(/In Android Chrome, open/)).toBeVisible();
   await go(page, 'History');
   await expect(page.getByText('Room for your next personal best.')).toBeVisible();
+});
+
+test('start delay inputs and range handles edit continuously without scrolling', async ({ page }, testInfo) => {
+  await page.goto('/');
+  const minimum = page.getByRole('textbox', { name: 'Minimum start delay' });
+  const maximum = page.getByRole('textbox', { name: 'Maximum start delay' });
+  const minSlider = page.getByRole('slider', { name: 'Minimum start delay slider' });
+  const maxSlider = page.getByRole('slider', { name: 'Maximum start delay slider' });
+  await minimum.click();
+  await expect(minimum).toHaveCSS('outline-style', 'none');
+  await expect(minimum.locator('..')).toHaveCSS('border-color', 'rgb(147, 174, 81)');
+  await minimum.press('ControlOrMeta+A');
+  await minimum.pressSequentially('2.5');
+  await expect(minimum).toHaveValue('2.5');
+  await minimum.press('Enter');
+  await expect(minSlider).toHaveAttribute('aria-valuenow', '2.5');
+  await maximum.fill('4.5');
+  await maximum.press('Enter');
+  await expect(maxSlider).toHaveAttribute('aria-valuenow', '4.5');
+  await maximum.fill('');
+  await maximum.press('Tab');
+  await expect(maximum).toHaveValue('4.5');
+  await minimum.fill('6');
+  await minimum.press('Enter');
+  await expect(minimum).toHaveValue('6');
+  await expect(maximum).toHaveValue('6');
+  await maximum.fill('3');
+  await maximum.press('Enter');
+  await expect(minimum).toHaveValue('3');
+  await expect(maximum).toHaveValue('3');
+  await minimum.fill('7');
+  await minimum.press('Escape');
+  await expect(minimum).toHaveValue('3');
+  await minimum.fill('2');
+  await minimum.press('Enter');
+  await maximum.fill('7');
+  await maximum.press('Enter');
+  await minSlider.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(minimum).toHaveValue('2.1');
+  await maximum.fill('6.5');
+
+  const rail = page.getByRole('group', { name: 'Start delay range' });
+  await rail.scrollIntoViewIfNeeded();
+  if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollBy(0, 160));
+  const box = await rail.boundingBox();
+  const start = await minSlider.boundingBox();
+  const startX = Math.round(start!.x + start!.width / 2 + 12);
+  const y = Math.round(start!.y + start!.height / 2);
+  const endX = Math.round(box!.x + box!.width * (4.2 - 1) / 7 + 12);
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  if (testInfo.project.name === 'mobile') {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: startX, y }] });
+    await expect(minSlider).toHaveAttribute('aria-valuenow', '2.1');
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: endX, y }] });
+    await expect.poll(async () => Number(await minSlider.getAttribute('aria-valuenow'))).toBeGreaterThan(4);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+  } else {
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    await expect(minSlider).toHaveAttribute('aria-valuenow', '2.1');
+    await page.mouse.move(endX, y, { steps: 6 });
+    await expect.poll(async () => Number(await minSlider.getAttribute('aria-valuenow'))).toBeGreaterThan(4);
+    await page.mouse.up();
+  }
+  await expect(maximum).toHaveValue('6.5');
+  await maxSlider.focus();
+  await page.keyboard.press('Home');
+  await expect(minimum).toHaveValue('1');
+  await expect(maximum).toHaveValue('1');
+  await page.keyboard.press('End');
+  await expect(maximum).toHaveValue('8');
+  await minimum.fill('2.5');
+  await minimum.press('Enter');
+  await maximum.fill('5.5');
+  await maximum.press('Enter');
+  await page.reload();
+  await expect(minimum).toHaveValue('2.5');
+  await expect(maximum).toHaveValue('5.5');
 });
 
 test('permission denial has an actionable recovery and leaves navigation usable', async ({ page }) => {
@@ -111,6 +192,27 @@ test('real worklet calibration, interactive replay, validation, timer and privat
   await expect(sample.getByText('5 / 5 shots')).toBeVisible();
   const thresholdInput = page.getByLabel('Shot threshold', { exact: true });
   const recommended = await thresholdInput.inputValue();
+  await thresholdInput.focus();
+  await expect(thresholdInput).toHaveCSS('outline-style', 'none');
+  await expect(thresholdInput.locator('..')).toHaveCSS('border-color', 'rgb(147, 174, 81)');
+  const separationInput = page.getByLabel('Minimum shot separation');
+  const recommendedSeparation = await separationInput.inputValue();
+  await separationInput.focus();
+  await expect(separationInput).toHaveCSS('outline-style', 'none');
+  await expect(separationInput.locator('..')).toHaveCSS('border-color', 'rgb(147, 174, 81)');
+  await separationInput.press('ControlOrMeta+A');
+  await separationInput.pressSequentially('275');
+  await expect(separationInput).toHaveValue('275');
+  await separationInput.press('Enter');
+  await expect(separationInput).toHaveValue('275');
+  await separationInput.fill('999');
+  await separationInput.press('Enter');
+  await expect(separationInput).toHaveValue('500');
+  await separationInput.fill('250');
+  await separationInput.press('Escape');
+  await expect(separationInput).toHaveValue('500');
+  await separationInput.fill(recommendedSeparation);
+  await separationInput.press('Enter');
   // Transient values such as "-" and "-2" must remain editable while the
   // user types the complete negative threshold instead of being clamped.
   await thresholdInput.click();
@@ -173,6 +275,8 @@ test('real worklet calibration, interactive replay, validation, timer and privat
   await page.getByRole('button', { name: 'Edit Indoor AEG' }).click();
   const savedThreshold = page.getByLabel('Threshold for Indoor AEG');
   await savedThreshold.click();
+  await expect(savedThreshold).toHaveCSS('outline-style', 'none');
+  await expect(savedThreshold.locator('..')).toHaveCSS('border-color', 'rgb(147, 174, 81)');
   await savedThreshold.press('ControlOrMeta+A');
   await savedThreshold.pressSequentially('-26');
   await expect(savedThreshold).toHaveValue('-26');
@@ -187,7 +291,7 @@ test('real worklet calibration, interactive replay, validation, timer and privat
   expect(saved).not.toMatch(/frames|originalDetections|originalSettings|rawAudio/);
   expect(JSON.parse(saved!).profiles).toHaveLength(1);
   await go(page, 'Timer');
-  await page.getByLabel('Maximum start delay').fill('1');
+  await page.getByRole('textbox', { name: 'Maximum start delay' }).fill('1');
   await page.getByRole('switch', { name: 'Enable PAR time' }).click();
   await page.getByLabel('PAR seconds').fill('1');
   await page.getByRole('button', { name: 'START', exact: true }).click();
